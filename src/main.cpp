@@ -11,7 +11,6 @@ constexpr auto X_LIMIT = 45;
 constexpr auto Y_LIMIT = 55;
 
 static FastCRC32 CRC32;
-volatile unsigned long stop_time = 0U;
 
 // TODO:
 // -> axis angles
@@ -131,14 +130,13 @@ int load_eeprom() {
     right.y.setTrimMicrosecondsOrUnits(settings.val[5]);
     left.set_angle(settings.val[0]);
     right.set_angle(settings.val[3]);
+    Serial.println("load ok");
     return 0;
   } else {
+    Serial.println("load CRC failure");
     return -1;
   }
 };
-
-
-
 
 void setup() {
   // put your setup code here, to run once:
@@ -168,25 +166,8 @@ void setup() {
   right.attach(4, 0, 5, 0);
   load_eeprom();
 
-  // Timer0 is already used for millis() - we'll just interrupt somewhere
-  // in the middle and call the "Compare A" function below
-  OCR0A = 0xAF;
-  TIMSK0 |= _BV(OCIE0A);
-}
-
-static void stop() {
-  //TODO
-  ;
-}
-
-SIGNAL(TIMER0_COMPA_vect) 
-{
-  // "dead man switch": if we haven't received a movement command in a while, stop.
-  if (millis() > stop_time) {
-    stop_time = ULONG_MAX;
-    stop();
-    Serial.println("halted");    
-  }
+  randomSeed(analogRead(0)); /* creates some random values using analog noise from a floating
+  analog pin */
 }
 
 
@@ -202,6 +183,7 @@ float floatMap(float x, float in_min, float in_max, float out_min, float out_max
 
 void rollEye() {
   // Rolls Eye One Time
+  Serial.println("rollEye");
   for (float i = 0; i <= 1; i = i + 0.05) {
     float x = i;
     float y = parabola(x);
@@ -227,9 +209,13 @@ void rollEye() {
 void randomTwitching() {
   auto randomH = random(-X_LIMIT, X_LIMIT); // random x position for horizontal servo
   auto randomV = random(-Y_LIMIT, Y_LIMIT); // random y position for vertical servo
+  Serial.println("random");
   look_together(randomH, randomV);
 }
 
+void cross_eyes() {
+  Serial.println("cross");
+}
 
 static int get_second_value(char c) {
   auto command = '\0';
@@ -247,11 +233,13 @@ static int get_second_value(char c) {
 
 void loop() 
 { 
+  static unsigned long next_time = 15000UL;
   static auto acc_on = false; // Accelerometer support
   static auto* active_eye = &left;
 
   //Check Bluetooth for new Instructions
   if (Serial.available()){
+      bool reset_timer = true;
       auto command = Serial.read(); //Get next character from bluetooth
      
       //**** Accelerometer  -  sends 'Aroll,pitch*' every 150 ms
@@ -343,7 +331,6 @@ void loop()
           break;
         };
 
-
         case 's':
           save_eeprom();
           break;
@@ -351,8 +338,29 @@ void loop()
         case 'S':
           load_eeprom();
           break;
+        
+        case 'g': // go
+          reset_timer = false;
+          next_time = 0;
+          break;
     };  // switch(command) 
-    stop_time = millis();
-  };  // if byte is availablE
+    Serial.println("done");
+    if (reset_timer) {
+      next_time = millis() + (1000UL * 60UL * 3UL);
+    }
+  } else if (millis() > next_time) {
+    // Do a random behavior
+    auto t = random(0, 1000);
+    if (t < 980) {
+      randomTwitching();
+      next_time = millis() + random(300, 1500);
+    } else if (t < 990) {
+      rollEye();
+      next_time = millis() + 200;
+    } else {
+      cross_eyes();
+      next_time = millis() + 100;
+    }
+  }
 
 } // end of primary loop
