@@ -19,11 +19,12 @@ static int clamp(int value, int max) {
 }
 
 static inline void init_servo(ServoEasing& servo, int pin, int trim) {
-  servo.write(90);
+  servo.write(CENTER);
   servo.attach(pin);
   servo.setReverseOperation(false);
-  servo.setSpeed(30);
-  servo.setTrim(CENTER, true);
+  servo.setSpeed(180);
+  servo.setEaseTo(EASE_CUBIC_IN_OUT);
+  servo.setTrim(CENTER);
   servo.write(0);
 }
 
@@ -40,8 +41,8 @@ struct eye {
     x_pos = clamp(x_pos, 75);
     y_pos = clamp(y_pos, 90);
 
-    x.write(x_pos);
-    y.write(y_pos);
+    x.startEaseTo(x_pos);
+    y.startEaseTo(y_pos);
   }
 };
 
