@@ -4,6 +4,9 @@
 
 constexpr auto CENTER = 90;
 constexpr auto STOP_INTERVAL = 300;  // half a second
+constexpr auto X_LIMIT = 75;
+constexpr auto Y_LIMIT = 75;
+
 volatile unsigned long stop_time = 0U;
 
 // TODO:
@@ -38,8 +41,8 @@ struct eye {
     init_servo(y, y_pin, y_bias);
   }
   inline void saccade(int x_pos, int y_pos) {
-    x_pos = clamp(x_pos, 75);
-    y_pos = clamp(y_pos, 90);
+    x_pos = clamp(x_pos, X_LIMIT);
+    y_pos = clamp(y_pos, Y_LIMIT);
 
     x.startEaseTo(x_pos);
     y.startEaseTo(y_pos);
@@ -47,6 +50,12 @@ struct eye {
 };
 
 static eye left, right;
+
+static void look_together(int x, int y) {
+  left.saccade(x, y);
+  right.saccade(x, y);
+}
+
 
 void setup() {
   // put your setup code here, to run once:
@@ -96,6 +105,48 @@ SIGNAL(TIMER0_COMPA_vect)
   }
 }
 
+
+float parabola(float a) {
+  float result;
+  result = -4 * sq(a - 0.5) + 1;
+  return result;
+}
+
+float floatMap(float x, float in_min, float in_max, float out_min, float out_max) {
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
+void rollEye() {
+  // Rolls Eye One Time
+  for (float i = 0; i <= 1; i = i + 0.05) {
+    float x = i;
+    float y = parabola(x);
+
+    x = floatMap(x, 0, 1, -X_LIMIT, X_LIMIT);
+    y = floatMap(y, 0, 1, Y_LIMIT, -Y_LIMIT);
+
+    look_together(x, y);
+
+    delay(30);
+  }
+  for (float i = 1; i >= 0; i = i - 0.05) {
+    float x = i;
+
+    x = floatMap(x, 0, 1, -X_LIMIT, X_LIMIT);
+
+    look_together(x, Y_LIMIT);
+
+    delay(25);
+  }
+}
+
+void randomTwitching() {
+  auto randomH = random(-X_LIMIT, X_LIMIT); // random x position for horizontal servo
+  auto randomV = random(-Y_LIMIT, Y_LIMIT); // random y position for vertical servo
+  look_together(randomH, randomV);
+}
+
+
 static int get_second_value(char c) {
   auto command = '\0';
   int result = 0;
@@ -109,10 +160,6 @@ static int get_second_value(char c) {
   return result;
 }
 
-static void look_together(int x, int y) {
-  left.saccade(x, y);
-  right.saccade(x, y);
-}
 
 void loop() 
 { 
@@ -177,7 +224,17 @@ void loop()
           look_together(pad_x, pad_x);
         }
         break;
+
+        case 'R':
+          rollEye();
+          break;
+
+        case 'Z':
+          randomTwitching();
+          break;
+
     };  // switch(command) 
+    stop_time = millis();
   };  // if byte is availablE
 
 } // end of primary loop
