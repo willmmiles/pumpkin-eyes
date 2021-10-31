@@ -1,6 +1,8 @@
 #include <limits.h>
 #include <math.h>
 #include <Arduino.h>
+#include <EEPROM.h>
+#include <FastCRC.h>
 #include <ServoEasing.h>  //arduino library
 
 constexpr auto CENTER = 90;
@@ -8,6 +10,7 @@ constexpr auto STOP_INTERVAL = 300;  // half a second
 constexpr auto X_LIMIT = 45;
 constexpr auto Y_LIMIT = 55;
 
+static FastCRC32 CRC32;
 volatile unsigned long stop_time = 0U;
 
 // TODO:
@@ -52,6 +55,10 @@ struct eye {
     x_pos = clamp(x_pos, X_LIMIT);
     y_pos = clamp(y_pos, Y_LIMIT);
 
+    Serial.print("X: ");
+    Serial.print(x_pos);
+    Serial.print(" Y: ");
+    Serial.println(y_pos);
     x.startEaseTo(x_pos);
     y.startEaseTo(y_pos);
   }
@@ -66,24 +73,77 @@ struct eye {
 
   inline void set_angle(float n_angle) {
     angle = n_angle;
-    angle_cos = cos(angle);
-    angle_sin = sin(angle);
+    auto angle_rad = angle * M_PI / 180;
+    angle_cos = cos(angle_rad);
+    angle_sin = sin(angle_rad);
     saccade(x_tgt, y_tgt); 
   }
 };
 
 static eye left, right;
 
+struct settings_t {
+  float val[6]; // angle, x, y trim, two eyes
+};
+
 static void look_together(int x, int y) {
   left.saccade(x, y);
   right.saccade(x, y);
 }
 
+void save_eeprom() {
+  auto settings = settings_t {};
+  settings.val[0] = left.angle;
+  settings.val[1] = left.x.mTrimMicrosecondsOrUnits;
+  settings.val[2] = left.y.mTrimMicrosecondsOrUnits;
+  settings.val[3] = right.angle;
+  settings.val[4] = right.x.mTrimMicrosecondsOrUnits;
+  settings.val[5] = right.y.mTrimMicrosecondsOrUnits;
+  auto* setting_ptr = reinterpret_cast<uint8_t*>(&settings);
+
+  for(auto ptr = 0U; ptr < sizeof(settings); ++ptr) {
+    EEPROM.update(ptr, setting_ptr[ptr]);
+  }
+
+  auto crc = CRC32.crc32(setting_ptr, sizeof(settings));
+  auto crc_ptr = reinterpret_cast<uint8_t*>(&crc);
+  for(auto ptr = 0U; ptr < sizeof(settings) + sizeof(crc); ++ptr) {
+    EEPROM.update(sizeof(settings) + ptr, crc_ptr[ptr]);
+  }
+};
+
+int load_eeprom() {
+  constexpr auto EEPROM_SIZE = sizeof(settings_t) + sizeof(uint32_t);
+  uint8_t buf[EEPROM_SIZE];
+  for(auto ptr = 0U; ptr < sizeof(buf); ++ptr) {
+    buf[ptr] = EEPROM.read(ptr);
+  };
+  // Check CRC
+  uint32_t eeprom_crc;
+  memcpy(&eeprom_crc, &buf[sizeof(buf) - sizeof(eeprom_crc)], sizeof(eeprom_crc));
+  auto computed_crc = CRC32.crc32(buf, sizeof(buf) - sizeof(eeprom_crc));
+  if (eeprom_crc == computed_crc) {
+    auto settings = settings_t {};
+    memcpy(&settings, buf, sizeof(settings));
+    left.x.setTrimMicrosecondsOrUnits(settings.val[1]);
+    left.y.setTrimMicrosecondsOrUnits(settings.val[2]);
+    right.x.setTrimMicrosecondsOrUnits(settings.val[4]);
+    right.y.setTrimMicrosecondsOrUnits(settings.val[5]);
+    left.set_angle(settings.val[0]);
+    right.set_angle(settings.val[3]);
+    return 0;
+  } else {
+    return -1;
+  }
+};
+
+
+
 
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(9600);
-  //Serial.setTimeout(50);      //ensures the the arduino does not read serial for too long
+  Serial.setTimeout(5000);      //ensures the the arduino does not read serial for too long
   // Send control panel specifications
   Serial.println("*.kwl");
   Serial.println("clear_panel()");
@@ -106,6 +166,7 @@ void setup() {
   // Fill in biases
   left.attach(2, 0, 3, 0);
   right.attach(4, 0, 5, 0);
+  load_eeprom();
 
   // Timer0 is already used for millis() - we'll just interrupt somewhere
   // in the middle and call the "Compare A" function below
@@ -283,6 +344,13 @@ void loop()
         };
 
 
+        case 's':
+          save_eeprom();
+          break;
+
+        case 'S':
+          load_eeprom();
+          break;
     };  // switch(command) 
     stop_time = millis();
   };  // if byte is availablE
