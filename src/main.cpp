@@ -4,8 +4,8 @@
 
 constexpr auto CENTER = 90;
 constexpr auto STOP_INTERVAL = 300;  // half a second
-constexpr auto X_LIMIT = 75;
-constexpr auto Y_LIMIT = 75;
+constexpr auto X_LIMIT = 45;
+constexpr auto Y_LIMIT = 55;
 
 volatile unsigned long stop_time = 0U;
 
@@ -25,7 +25,7 @@ static inline void init_servo(ServoEasing& servo, int pin, int trim) {
   servo.write(CENTER);
   servo.attach(pin);
   servo.setReverseOperation(false);
-  servo.setSpeed(180);
+  servo.setSpeed(360);
   servo.setEaseTo(EASE_CUBIC_IN_OUT);
   servo.setTrim(CENTER);
   servo.write(0);
