@@ -6,6 +6,18 @@ constexpr auto CENTER = 90;
 constexpr auto STOP_INTERVAL = 300;  // half a second
 volatile unsigned long stop_time = 0U;
 
+// TODO:
+// -> easing
+// -> axis limits, particularly x
+// -> axis angles
+// -> movement generation
+
+static int clamp(int value, int max) {
+  if (value > max) return max;
+  if (value < -max) return -max;
+  return value;
+}
+
 static inline void init_servo(ServoEasing& servo, int pin, int trim) {
   servo.write(90);
   servo.attach(pin);
@@ -25,8 +37,9 @@ struct eye {
     init_servo(y, y_pin, y_bias);
   }
   inline void saccade(int x_pos, int y_pos) {
-    //x.startEaseTo(x_pos);
-    //y.startEaseTo(y_pos);
+    x_pos = clamp(x_pos, 75);
+    y_pos = clamp(y_pos, 90);
+
     x.write(x_pos);
     y.write(y_pos);
   }
@@ -95,15 +108,7 @@ static int get_second_value(char c) {
   return result;
 }
 
-static int clamp(int value, int max) {
-  if (value > max) return max;
-  if (value < -max) return -max;
-  return value;
-}
-
 static void look_together(int x, int y) {
-  x = clamp(x, 90);
-  y = clamp(y, 90);
   left.saccade(x, y);
   right.saccade(x, y);
 }
