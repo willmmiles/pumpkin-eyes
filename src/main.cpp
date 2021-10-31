@@ -1,4 +1,5 @@
 #include <limits.h>
+#include <math.h>
 #include <Arduino.h>
 #include <ServoEasing.h>  //arduino library
 
@@ -10,8 +11,6 @@ constexpr auto Y_LIMIT = 55;
 volatile unsigned long stop_time = 0U;
 
 // TODO:
-// -> easing
-// -> axis limits, particularly x
 // -> axis angles
 // -> movement generation
 
@@ -33,19 +32,43 @@ static inline void init_servo(ServoEasing& servo, int pin, int trim) {
 
 struct eye {
   ServoEasing x, y;
+  float angle;
+  float angle_cos, angle_sin;
+  float x_tgt, y_tgt;
 
-  eye() {};
+  eye() : angle(0), angle_cos(1), angle_sin(0), x_tgt(0), y_tgt(0) {};
 
   inline void attach(int x_pin, int x_bias, int y_pin, int y_bias) {
     init_servo(x, x_pin, x_bias);
     init_servo(y, y_pin, y_bias);
   }
-  inline void saccade(int x_pos, int y_pos) {
+  inline void saccade(float x_pos, float y_pos) {
+    x_tgt = x_pos; y_tgt = y_pos;
+    
+    // Apply angle correction
+    x_pos = x_pos * angle_cos - y_pos * angle_sin;
+    y_pos = y_pos * angle_cos + x_pos * angle_sin;
+
     x_pos = clamp(x_pos, X_LIMIT);
     y_pos = clamp(y_pos, Y_LIMIT);
 
     x.startEaseTo(x_pos);
     y.startEaseTo(y_pos);
+  }
+
+  inline void set_x_trim(int x_trim) {
+    x.setTrim(CENTER+x_trim, true);
+  }
+
+  inline void set_y_trim(int y_trim) {
+    y.setTrim(CENTER+y_trim, true);
+  }
+
+  inline void set_angle(float n_angle) {
+    angle = n_angle;
+    angle_cos = cos(angle);
+    angle_sin = sin(angle);
+    saccade(x_tgt, y_tgt); 
   }
 };
 
@@ -164,6 +187,7 @@ static int get_second_value(char c) {
 void loop() 
 { 
   static auto acc_on = false; // Accelerometer support
+  static auto* active_eye = &left;
 
   //Check Bluetooth for new Instructions
   if (Serial.available()){
@@ -232,6 +256,32 @@ void loop()
         case 'Z':
           randomTwitching();
           break;
+
+        case 'e':
+          active_eye = &left;
+          break;
+        case 'E':
+          active_eye = &right;
+          break;
+
+        case 'D': {
+          auto angle = Serial.parseInt();
+          active_eye->set_angle(angle);
+          break;
+        };
+
+        case 'x': {
+          auto trim = Serial.parseInt();
+          active_eye->set_x_trim(trim);
+          break;
+        };
+        
+        case 'y': {
+          auto trim = Serial.parseInt();
+          active_eye->set_y_trim(trim);
+          break;
+        };
+
 
     };  // switch(command) 
     stop_time = millis();
